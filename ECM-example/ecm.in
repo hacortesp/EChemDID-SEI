@@ -1,0 +1,91 @@
+########################################################
+# This simulation shows how to use EChemDID to run ECM # 
+# simulations, here on a simple Cu/SiO2 cell           #
+########################################################
+
+units          real
+atom_style     full
+boundary       p p s
+
+read_data      ./small.data
+
+pair_style     reax/c ./lmp_control checkqeq yes
+pair_coeff     * * ./ffield Cu1 Cu2 O Si 
+
+group          cu1 type 1
+group          cu2 type 2
+group          o type 3
+group          si type 4
+
+timestep       0.5
+
+thermo_style   custom etotal pe ke temp evdwl press pxx pyy pzz pxy pxz pyz lx ly lz
+thermo_modify  line multi flush yes
+thermo         100
+
+variable       ti equal 300.0
+
+# We define small regions at the edge of each contact where we apply
+# the electrochemical potential
+# We first define some variables
+variable       cu2zmin equal bound(cu2,zmin)
+variable       cu1zmax equal bound(cu1,zmax)
+variable       cu2zmax equal bound(cu2,zmax)
+variable       cu1zmin equal bound(cu1,zmin)
+variable       l2min equal ${cu2zmin}-1.0
+variable       l2max equal ${cu2zmin}+1.0
+variable       l1min equal ${cu1zmax}-1.0
+variable       l1max equal ${cu1zmax}+1.0
+
+# Create the fix & compute property/atom
+fix            1 all property/atom d_loc d_lap
+compute        1 all property/atom d_loc d_lap
+
+# Minimize
+fix            6 all qeq/reax 1 0.0 15.0 1.0e-6 reax/c chi 1 charge 0.0
+minimize       1.0e-4 1.0e-6 100 1000
+write_data     min.*
+
+quit
+# Boundary conditions regions
+region         bound1 block INF INF INF INF ${l1min} ${l1max} units box
+group          cu1_bound region bound1
+region         bound2 block INF INF INF INF ${l2min} ${l2max} units box
+group          cu2_bound region bound2
+
+# Inactive copper electrode
+group          cu1_inactive type 1
+group          active subtract all cu1_inactive cu2_bound
+group          inactive union cu2_bound cu1_inactive
+
+dump           1 all custom 500 traj.dump id type x y z q c_1[1] c_1[2]
+
+# Initialize electronegativity in each electrodes
+variable       volt equal 8.0
+variable       chi1 equal 4.8038+(${volt}/2.0) 
+variable       chi2 equal 4.8038-(${volt}/2.0) 
+
+set            group cu1 d_loc ${chi1}
+set            group cu2 d_loc ${chi2}
+set            group si d_loc 1.8038
+set            group o d_loc 8.5000
+set            group all d_lap 0.0
+
+# Define copper group
+group          cu union cu1 cu2
+
+velocity       inactive set NULL NULL NULL units box
+
+# NVT + EChemDID
+fix            3 inactive rigid single force 1 off off off torque 1 off off off
+fix            4 cu echemdid 1 k 4.0 cut 4.0 norm 0 nelec 10 boundary cu1_bound ${chi1} cu2_bound ${chi2}
+fix            5 active nvt temp ${ti} ${ti} 100
+restart        100000 snap
+run            50000000
+write_restart  final.*.rst
+unfix          3
+unfix          4
+unfix          5
+
+unfix          1
+unfix          6

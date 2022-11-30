@@ -1,0 +1,118 @@
+LAMMPS (10 Feb 2015)
+########################################################
+# This simulation shows how to use EChemDID to run ECM #
+# simulations, here on a simple Cu/SiO2 cell           #
+########################################################
+
+units          real
+atom_style     full
+boundary       p p s
+
+read_data      ./small.data
+  orthogonal box = (-20.7025 -20.6905 -15.0466) to (20.1801 20.1582 41.2404)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  5948 atoms
+  0 = max # of 1-2 neighbors
+  0 = max # of 1-3 neighbors
+  0 = max # of 1-4 neighbors
+  1 = max # of special neighbors
+
+pair_style     reax/c ./lmp_control checkqeq yes
+pair_coeff     * * ./ffield Cu1 Cu2 O Si
+
+group          cu1 type 1
+1936 atoms in group cu1
+group          cu2 type 2
+2904 atoms in group cu2
+group          o type 3
+741 atoms in group o
+group          si type 4
+367 atoms in group si
+
+timestep       0.5
+
+thermo_style   custom etotal pe ke temp evdwl press pxx pyy pzz pxy pxz pyz lx ly lz
+thermo_modify  line multi flush yes
+thermo         100
+
+variable       ti equal 300.0
+
+# We define small regions at the edge of each contact where we apply
+# the electrochemical potential
+# We first define some variables
+variable       cu2zmin equal bound(cu2,zmin)
+variable       cu1zmax equal bound(cu1,zmax)
+variable       cu2zmax equal bound(cu2,zmax)
+variable       cu1zmin equal bound(cu1,zmin)
+variable       l2min equal ${cu2zmin}-1.0
+variable       l2min equal -10.041-1.0
+variable       l2max equal ${cu2zmin}+1.0
+variable       l2max equal -10.041+1.0
+variable       l1min equal ${cu1zmax}-1.0
+variable       l1min equal 36.234798-1.0
+variable       l1max equal ${cu1zmax}+1.0
+variable       l1max equal 36.234798+1.0
+
+# Create the fix & compute property/atom
+fix            1 all property/atom d_loc d_lap
+compute        1 all property/atom d_loc d_lap
+
+# Minimize
+fix            6 all qeq/reax 1 0.0 15.0 1.0e-6 reax/c chi 1 charge 0.0
+minimize       1.0e-4 1.0e-6 100 1000
+WARNING: Resetting reneighboring criteria during minimization (../min.cpp:168)
+Neighbor list info ...
+  2 neighbor list requests
+  update every 1 steps, delay 0 steps, check yes
+  master list distance cutoff = 17
+Memory usage per processor = 525.289 Mbytes
+---------------- Step        0 ----- CPU =      0.0000 (sec) ----------------
+TotEng   =   -503398.5439 PotEng   =   -503398.5439 KinEng   =         0.0000 
+Temp     =         0.0000 E_vdwl   =   -503398.5439 Press    =     24195.5694 
+Pxx      =     21108.5011 Pyy      =     20440.8142 Pzz      =     31037.3930 
+Pxy      =       570.4487 Pxz      =       644.2693 Pyz      =      1832.0232 
+Lx       =        40.8827 Ly       =        40.8487 Lz       =        46.2871 
+---------------- Step       17 ----- CPU =     40.8690 (sec) ----------------
+TotEng   =   -507336.6388 PotEng   =   -507336.6388 KinEng   =         0.0000 
+Temp     =         0.0000 E_vdwl   =   -507336.6388 Press    =      1435.7651 
+Pxx      =     -1734.8072 Pyy      =     -1100.6615 Pzz      =      7142.7640 
+Pxy      =       757.5763 Pxz      =       532.1797 Pyz      =      1850.8040 
+Lx       =        40.8827 Ly       =        40.8487 Lz       =        46.2871 
+Loop time of 40.869 on 1 procs for 17 steps with 5948 atoms
+
+Minimization stats:
+  Stopping criterion = energy tolerance
+  Energy initial, next-to-last, final = 
+        -503398.543923     -507289.667188     -507336.638842
+  Force two-norm initial, final = 2223.13 533.634
+  Force max component initial, final = 260.76 79.325
+  Final line search alpha, max atom move = 0.000426458 0.0338288
+  Iterations, force evaluations = 17 34
+
+Pair  time (%) = 25.9779 (63.5639)
+Bond  time (%) = 7.86781e-06 (1.92513e-05)
+Neigh time (%) = 0 (0)
+Comm  time (%) = 0.00439572 (0.0107556)
+Outpt time (%) = 0 (0)
+Other time (%) = 14.8867 (36.4254)
+
+Nlocal:    5948 ave 5948 max 5948 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:    14571 ave 14571 max 14571 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    4.96657e+06 ave 4.96657e+06 max 4.96657e+06 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 4966570
+Ave neighs/atom = 834.998
+Ave special neighs/atom = 0
+Neighbor list builds = 0
+Dangerous builds = 0
+write_data     min.*
+Neighbor list info ...
+  2 neighbor list requests
+  update every 1 steps, delay 10 steps, check yes
+  master list distance cutoff = 17
+
+quit
