@@ -1,0 +1,133 @@
+# REAX potential 
+
+units		real
+atom_style	full   
+boundary        p p s
+
+read_data	data.lammps
+
+pair_style      reaxff NULL checkqeq yes safezone 1.8 mincap 180 
+pair_coeff	* * ffield.reax P F O O C C Li Li Li H
+
+neighbor	2.0 bin
+neigh_modify	every 10 delay 0 check no
+
+group          p   type 1  
+group          f   type 2
+group          ox  type 3  #Normal oxygen
+group          oc  type 4  #Carboxyl oxygen 
+group          cc  type 5  #Carbon cathode
+group          ce  type 6  #Carbon electrolyte
+group          lia type 7  #Li anode      
+group          lic type 8  #Li cathode    
+group          lie type 9  #Li electrolyte    
+group          h   type 10 
+
+variable       stepp    equal 0.2 #tiemestep en fs
+variable       tot_time equal 500 #ps
+variable       tot_step equal round(${tot_time}*1E-12/(${stepp}*1E-15))
+variable       tdamp    equal ${stepp}*100 # Thermostat time coefficient
+variable       pdamp    equal ${stepp}*1000
+variable       dumptrj  equal 1000
+variable       T        equal 298
+
+# Small regions at the edge of each contact 
+# where the electrochemical potentialv will be applied
+# First define some variables
+# bound returns the min/max of a particular coordinate for all atoms in the group
+variable       liazmin equal bound(lia,zmin)
+variable       liazmax equal bound(lia,zmax)
+variable       lamin equal ${liazmin}-0.5   
+variable       lamax equal ${liazmax}+0.5  
+
+variable       liczmin equal bound(lic,zmin)
+variable       liczmax equal bound(lic,zmax)
+variable       lcmin equal ${liczmin}-0.5
+variable       lcmax equal ${liczmax}+0.5
+
+
+# Create the fix & compute property/atom
+fix            1 all property/atom d_locpot d_lap 
+compute        1 all property/atom d_locpot d_lap
+
+# Boundary conditions regions
+region         bound1 block INF INF INF INF ${lamin} ${lamax} units box #lia atoms 
+group          regionlia region bound1
+region         bound2 block INF INF INF INF ${lcmin} ${lcmax} units box  #lic atoms 
+group          regionlic region bound2
+
+# Inactive copper electrode
+group          active subtract all regionlic regionlia
+group          inactive union regionlic regionlia 
+
+# Define copper group
+group          li union lia lic lie
+group          electrolyte union ox oc ce p f h lie
+group          electrodes  union cc lia lic
+
+velocity       inactive set NULL NULL NULL units box
+fix            4 inactive rigid single force 1 off off off torque 1 off off off
+fix            0  electrodes setforce 0.0 0.0 0.0
+
+# Minimize
+dump           min all custom 1 min.lammpstrj id type x y z q c_1[1] c_1[2]
+fix            2   all  qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff  
+minimize       1.0e-6 1.0e-6 100 1000
+min_style      fire
+timestep       0.001
+minimize       0.0 0.0 1000 10000
+undump         min
+unfix          2  
+
+# Create a wall to avoid Li interact with the electrolyte
+variable       sigma_a  equal (zhi-${lcmin})+2
+variable       cf_wall_a equal ${sigma_a}+1
+
+variable       sigma_c  equal (${lamax}-zlo)+1
+variable       cf_wall_c equal ${sigma_c}+1
+
+fix            7 active wall/lj126 zhi EDGE 5.0 ${sigma_a} ${cf_wall_a} units box
+fix            8 electrolyte wall/lj126 zlo EDGE 5.0 ${sigma_c} ${cf_wall_c} units box
+
+# Initialize electronegativity in each electrodes
+variable       volt equal 10.0
+set            group p   d_locpot 1.8000
+set            group f   d_locpot 9.0000
+set            group ox  d_locpot 8.5000
+set            group oc  d_locpot 8.5000
+set            group ce  d_locpot 5.8678
+set            group lia d_locpot -3.000
+set            group lic d_locpot -3.000
+set            group h   d_locpot 5.3200
+
+reset_timestep 0
+timestep ${stepp}
+
+#Check of the T and P in the electrolyte
+compute        2 active temp
+compute        patom active stress/atom 2
+compute        p active reduce sum c_patom[1] c_patom[2] c_patom[3]
+variable       press equal -(c_p[1]+c_p[2]+c_p[3])/(27*27*60)
+thermo_style   custom step temp etotal press v_press
+
+# NVT + EChemDID
+fix            3 all qeq/shielded 1 10.0 1.0e-6 1000 reaxff 
+fix            5 li echemdid 1 k 6.0 rc 4.0 norm 0.6 nelec 10 regionlia regionlic volt ${volt}
+fix            6 active nvt temp $T $T ${tdamp}
+fix_modify     6 temp 2
+
+dump           1 all custom ${dumptrj} traj.lammpstrj id type x y z q c_1[1] c_1[2]
+thermo         ${dumptrj}
+thermo_style   custom step temp c_2 etotal pe ke press v_press 
+
+restart        1000000 snap
+run            ${tot_step}
+write_data     nvt.dat
+
+unfix          1
+unfix          3
+unfix          4
+unfix          5
+unfix          6
+unfix          7
+unfix          8
