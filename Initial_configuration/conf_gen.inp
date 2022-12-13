@@ -1,0 +1,72 @@
+# All atoms from diferent molecules will be at least 2.0 Angstroms apart
+# at the solution
+
+tolerance 2.0
+
+# The type of the files will be pdb 
+
+filetype pdb
+
+# The name of the output file
+
+output conf.pdb
+
+# The protein will be fixed with its center of mass at center of the
+# box, and no rotation (the first three zeros correspond to the position
+# of the center of mass and the last three correspond to the euler
+# angles of rotation, in radian, relative to the position in the input
+# file). 
+
+seed 1111111 
+
+#>>>>>>electrode
+structure Libcc_881a.pdb
+   number 1  
+   resnumbers 3
+   fixed 0.0 0.0 0.0 0.0 0.0 0.0  
+end structure
+
+structure o_graphite-LiC6.pdb
+   number 1  
+   resnumbers 3
+   fixed 0.0 0.0 3.427 0.0 0.0 0.0  
+end structure
+
+#3.427A(Lia) + 10(cath)+ 60A(electrolyte +3A
+#>>>>>>counter-electrode
+structure Libcc_881c.pdb
+   number 1  
+   resnumbers 3
+   fixed 0.0 0.0 75.0 0.0 0.0 0.0  
+end structure
+
+#>>>>>Electrolyte
+structure li_atoms.pdb
+   number 48
+   resnumbers 3
+   inside box 0.0 0.0 14.0 27.00 27.00 15.00
+   nloop 300
+end structure
+
+#>>>>salt
+structure lipf6_modif.pdb
+   number 26
+   resnumbers 3
+   inside box 0.0 0.0 15.0 27.00 27.00 60.00
+   nloop 300
+end structure
+
+#>>>>solvent
+structure ec.pdb
+  number 178
+  resnumbers 3
+  inside box 0.0 0.0 15.0 27.00 27.00 72.50
+  nloop 300
+end structure
+
+structure dmc.pdb
+  number 141
+  resnumbers 3
+  inside box 0.0 0.0 15.0 27.00 27.00 72.50
+  nloop 300
+end structure
